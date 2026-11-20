@@ -1,0 +1,159 @@
+plugins {
+    id 'java'
+}
+
+def allureCliVersion = '2.34.0'
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    allureCli {
+        canBeConsumed = false
+        transitive = false
+    }
+}
+
+dependencies {
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.52.0'
+    testImplementation platform('org.junit:junit-bom:5.14.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'io.qameta.allure:allure-jupiter:2.35.6'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.20.2'
+    allureCli "io.qameta.allure:allure-commandline:${allureCliVersion}@zip"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+
+def settingsFile = layout.projectDirectory.file('config/test.properties')
+def settings = new Properties()
+settings.load(new StringReader(providers.fileContents(settingsFile).asText.get()))
+def setting = { key -> providers.gradleProperty(key).getOrElse(settings.getProperty(key, '')).trim() }
+def browsers = ['chrome', 'firefox', 'safari']
+def selectedBrowser = setting('browser').toLowerCase(Locale.ROOT)
+def suite = setting('suite').toLowerCase(Locale.ROOT)
+if (!browsers.contains(selectedBrowser)) {
+    throw new GradleException('Укажите -Pbrowser=chrome, firefox или safari.')
+}
+if (!(suite in ['full', 'smoke'])) {
+    throw new GradleException('Укажите -Psuite=full или smoke.')
+}
+
+def testProperties = ['headless', 'baseUrl', 'dataFile', 'waitSeconds', 'pageLoadSeconds', 'safariRemoteUrl']
+        .collectEntries { key -> [key, setting(key)] }
+def localSafari = providers.systemProperty('os.name').get().toLowerCase(Locale.ROOT).contains('mac')
+def safariAvailable = localSafari || !testProperties.safariRemoteUrl.isBlank()
+
+def reports = layout.projectDirectory.dir('reports')
+def results = reports.dir('allure-results')
+def report = reports.dir('allure')
+def reportPath = 'reports/allure'
+def resultFiles = fileTree(results) { include '**/*-result.json' }
+
+def allureTools = layout.buildDirectory.dir('tools')
+def allureHome = allureTools.map { it.dir("allure-${allureCliVersion}") }
+def allureArchive = configurations.allureCli.elements.map { it.iterator().next().asFile }
+def unpackAllure = tasks.register('unpackAllure', Sync) {
+    from zipTree(allureArchive)
+    into allureTools
+}
+
+def prepare = tasks.register('prepare') {
+    group = 'verification'
+    description = 'Компилирует тесты и загружает Allure CLI.'
+    dependsOn tasks.named('testClasses'), unpackAllure
+    inputs.files(configurations.testRuntimeClasspath)
+}
+
+def clearResults = tasks.register('clearTestResults', Delete) {
+    dependsOn prepare
+    delete results, report
+}
+
+tasks.named('clean', Delete) {
+    delete results, report
+}
+
+def allureReport = tasks.register('allureReport', JavaExec) {
+    group = 'verification'
+    description = 'Собирает HTML-отчёт Allure из результатов последнего прогона.'
+    dependsOn unpackAllure
+    mustRunAfter tasks.withType(Test)
+    workingDir projectDir
+    classpath fileTree(allureHome.map { it.dir('lib') }) { include '*.jar' }
+    classpath files(allureHome.map { it.dir('lib/config') })
+    mainClass = 'io.qameta.allure.CommandLine'
+    environment 'ALLURE_NO_ANALYTICS', 'true'
+    environment 'APP_HOME', allureHome.get().asFile.absolutePath
+    inputs.dir(results).optional()
+    outputs.dir(report)
+    onlyIf('Есть результаты тестов') { !resultFiles.isEmpty() }
+    doFirst { JavaExec task ->
+        def folders = resultFiles.files.collect { it.parent }.unique().sort()
+        task.args(['--quiet', 'generate'] + folders + [
+                '--clean', '--single-file', '--lang', 'ru', '--name', 'SL Flights — UI-тесты',
+                '--output', reportPath
+        ])
+    }
+    doLast { JavaExec task ->
+        task.logger.lifecycle("Отчёт Allure — ${reportPath}/index.html")
+    }
+}
+
+def configureRun = { Test task, String browser ->
+    task.dependsOn clearResults
+    task.finalizedBy allureReport
+    task.workingDir projectDir
+    task.systemProperties testProperties
+    task.systemProperty 'browser', browser
+    def browserResults = results.dir("${task.name}-${browser}")
+    task.systemProperty 'allure.results.directory', browserResults.asFile.absolutePath
+    task.outputs.dir(browserResults)
+    task.outputs.upToDateWhen { false }
+    task.useJUnitPlatform {
+        if (suite == 'smoke') {
+            includeTags 'smoke'
+        }
+    }
+    task.testLogging {
+        events 'passed', 'failed', 'skipped'
+    }
+    def description = "Браузер ${browser}, набор ${suite}".toString()
+    task.doFirst { Test run ->
+        run.logger.lifecycle(description)
+        if (browser == 'safari' && !safariAvailable) {
+            throw new GradleException('Для Safari нужен macOS или адрес Grid с узлом Safari в safariRemoteUrl.')
+        }
+    }
+}
+
+def defaultTest = tasks.named('test', Test) {
+    configureRun(delegate, selectedBrowser)
+}
+
+def browserTests = browsers.collect { browser ->
+    tasks.register("${browser}Test", Test) {
+        group = 'verification'
+        description = "Запускает сценарии SL Flights в ${browser}."
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        configureRun(delegate, browser)
+    }
+}
+
+tasks.register('crossBrowserTest') {
+    group = 'verification'
+    description = 'Запускает выбранный набор в Chrome, Firefox и Safari.'
+    dependsOn browserTests
+}
+
+// Последовательный запуск важен для браузеров с видимым окном.
+def orderedTests = [defaultTest] + browserTests
+orderedTests.eachWithIndex { run, index ->
+    run.configure { mustRunAfter orderedTests.take(index) }
+}

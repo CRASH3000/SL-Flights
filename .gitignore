@@ -1,0 +1,28 @@
+# Gradle, generated reports, and local JDK
+/.gradle/
+/build/
+/reports/
+/.tools/
+/out/
+
+# IDE metadata
+/.idea/
+/.vscode/
+/.settings/
+/.classpath
+/.project
+*.iml
+*.ipr
+*.iws
+
+# Local overrides, logs, and OS metadata
+/config/*.local.properties
+/data/*.local.json
+.env
+.env.*
+!.env.example
+*.class
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

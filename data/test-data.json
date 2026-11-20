@@ -1,0 +1,63 @@
+{
+  "standard": {
+    "credentials": {
+      "username": "standard_user",
+      "password": "stand_pass1"
+    },
+    "passenger": {
+      "fullName": "Иванов Иван Иванович",
+      "passport": "1234 567890",
+      "email": "ivanov@example.com",
+      "phone": "+7 (123) 456-7890"
+    }
+  },
+  "locked": {
+    "username": "locked_out_user",
+    "password": "lock_pass2"
+  },
+  "wrongPassword": "wrong_password",
+  "search": {
+    "withFlights": {
+      "departure": "Москва",
+      "arrival": "Лондон",
+      "weekday": "MONDAY"
+    },
+    "flights": [
+      { "time": "08:00", "priceRubles": 35000 },
+      { "time": "14:30", "priceRubles": 42000 },
+      { "time": "20:15", "priceRubles": 38000 }
+    ],
+    "withoutFlights": {
+      "departure": "Казань",
+      "arrival": "Париж",
+      "weekday": "MONDAY"
+    }
+  },
+  "editedPassenger": {
+    "fullName": "Анна Тестова",
+    "passport": "9876 543210",
+    "email": "anna.qa@example.com",
+    "phone": "+7 (900) 111-2233"
+  },
+  "invalidInputs": {
+    "name": "Test Passenger",
+    "passport": "1234 AB7890",
+    "email": "missing-at.example.com",
+    "phone": "abc"
+  },
+  "messages": {
+    "greeting": "Добро пожаловать, Иванов Иван Иванович!",
+    "wrongCredentials": "Неверное имя пользователя или пароль.",
+    "lockedUser": "Пользователь заблокирован.",
+    "emptyCredentials": "Username and Password are required.",
+    "missingDate": "Пожалуйста, укажите дату вылета.",
+    "pastDate": "Невозможно осуществить поиск: выбранная дата уже прошла.",
+    "noFlights": "Рейсов по вашему запросу не найдено.",
+    "requiredPassengerFields": "Пожалуйста, заполните все поля.",
+    "invalidName": "ФИО должно содержать только русские буквы, пробелы и дефис.",
+    "invalidPassport": "Номер паспорта должен содержать только цифры и пробелы.",
+    "invalidEmail": "Пожалуйста, введите корректный email адрес.",
+    "bookingSuccess": "Регистрация успешно завершена!",
+    "confirmationHeading": "Бронирование завершено!"
+  }
+}
